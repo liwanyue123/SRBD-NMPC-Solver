@@ -9,7 +9,7 @@
             "program": "${workspaceFolder}/build/stance_nmpc_test",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}/build",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
