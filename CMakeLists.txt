@@ -30,7 +30,7 @@ include_directories(${PYTHON_INCLUDE_DIRS})
 
 
 add_executable(${PROJECT_NAME}
-  stance_nmpc_example.cpp
+  NMPC_solver.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} hpipm_cpp flow_dynamic yaml-cpp ${PYTHON_LIBRARIES})
