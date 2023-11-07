@@ -15,13 +15,17 @@
 #include <yaml-cpp/yaml.h>
 #include <thread>
 #include <mutex>
-
-class StanceNMPC {
+template <typename T>
+using Vec12 = Eigen::Matrix<T, 12, 1>;
+template <typename T>
+using Vec24 = Eigen::Matrix<T, 24, 1>;
+class StanceNMPC
+{
 public:
-    explicit StanceNMPC(const std::string& config_file);
+    explicit StanceNMPC(const std::string &config_file);
     ~StanceNMPC();
 
-    bool readYaml(const std::string& config_file);
+    bool readYaml(const std::string &config_file);
     void initialize();
     void controlLoop();
     void drawPlot();
@@ -32,8 +36,8 @@ private:
     Eigen::Matrix<double, 3, 1> L_read;
 
     double Qu_read;
-    double mu_read;
-    double theta_read;
+    double mu_barrier;
+    double theta_barrier;
     double alpha_ocp_read;
     int loop_read;
 
@@ -42,9 +46,9 @@ private:
     double T_step_read;
     bool show_flag_read;
 
-    Eigen::Matrix<double, 12, 12> Q;
+    Eigen::Matrix<double, 12, 12> Q; // state
     Eigen::Matrix<double, 12, 12> S;
-    Eigen::Matrix<double, 12, 12> R;
+    Eigen::Matrix<double, 12, 12> R; // force
     Eigen::Matrix<double, 12, 12> QN;
 
     FlowDynamic flow_dynamic_;
@@ -55,15 +59,42 @@ private:
     Eigen::Matrix<double, 12, 1> x_ref_k;
     Eigen::MatrixXd x_ref;
 
+    Eigen::MatrixXd get_solveX;
+
+    Eigen::MatrixXd get_solveU;
+
     hpipm::OcpQpIpmSolverSettings solver_settings;
 
-    std::mutex control_mutex;
+    void setupDynamics();
 
+    void setupReference();
+
+    void prepareQpStructures(std::vector<hpipm::OcpQp> &qp);
+
+    void solveQpProblems(std::vector<hpipm::OcpQpSolution> &solution);
+
+    void updateStateAndControl(std::vector<hpipm::OcpQpSolution> &solution);
+
+    void printOptimizationInfo(int sqp_loop);
+    bool checkConvergence();
+    bool linearSearch();
+    void prepareQpStep(int begin, int end);
+
+    void initThread();
+    void atomicPrint();
     // Helper methods for control calculations
     void solveNMPC();
-    void applyControl(const Eigen::VectorXd& control);
+    void applyControl(const Eigen::VectorXd &control);
     void updateState();
-    // ... other helper methods as needed ...
+
+    Eigen::VectorXd x_mpc;
+    Eigen::VectorXd x_mpc_next;
+    Eigen::VectorXd u_mpc;
+
+    Eigen::MatrixXd A_constrain, f_constrain;
+    Eigen::MatrixXd f_constrain_all, f_all;
+    // 障碍方程系数
+    Eigen::VectorXd b_constrain, db_constrain, ddb_constrain; // 障碍方程
 };
 
 #endif // STANCE_NMPC_H
