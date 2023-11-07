@@ -74,7 +74,7 @@ private:
 
     void updateStateAndControl(std::vector<hpipm::OcpQpSolution> &solution);
 
-    void printOptimizationInfo(int sqp_loop);
+    void printOptimizationInfo(int sqp_loop, bool is_finish);
     bool checkConvergence();
     bool linearSearch();
     void prepareQpStep(int begin, int end);
@@ -103,6 +103,18 @@ private:
     Eigen::VectorXd u_search;
     Eigen::MatrixXd f_search;
     Eigen::VectorXd f_search_v;
+
+    double theta_max = 1e-6;
+    double theta_min = 5e-10;
+    double eta = 1e-4;
+    double byta_phi = 1e-6;
+    double byta_theta = 1e-6;
+    double byta_alpha = 0.5;
+    double alpha_min = 1e-4;
+    double alpha = 1.0;
+    double theta; // 等式约束
+    double phi;   // cost
+    double dphi;
 };
 
 #endif // STANCE_NMPC_H

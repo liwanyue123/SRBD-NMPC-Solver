@@ -139,11 +139,35 @@ void StanceNMPC::initialize()
   f_search_v = Eigen::VectorXd::Zero(12);
 }
 
-void StanceNMPC::printOptimizationInfo(int sqp_loop)
+void StanceNMPC::printOptimizationInfo(int sqp_loop, bool is_finish)
 {
-  // 打印当前优化循环的信息
-  std::cout << "Iteration: " << sqp_loop << std::endl;
-  // 其他打印逻辑...
+
+  if (is_finish)
+  {
+    std::cout << "迭代次数 : " << Nrep << std::endl;
+    std::cout << "求解状态 = " << std::endl
+              << x_nmpc << std::endl; // 求解状态量
+    std::cout << "求解力矩 = " << std::endl
+              << u_nmpc << std::endl; // 求解力
+    std::cout << "最大摩擦锥约束违反量（负数） = " << std::endl
+              << f_constrain_all.minCoeff() << std::endl; //
+    std::cout << "最大动力学方程违反量（正数） = " << std::endl
+              << f_all.cwiseAbs().maxCoeff() << std::endl;
+    std::cout << "动力学方程违反量 = " << std::endl
+              << f_all << std::endl;
+  }
+  else
+  {
+    std::cout << "sqp_loop : " << sqp_loop << std::endl;
+    std::cout << "phi = " << std::endl
+              << phi << std::endl;
+    std::cout << "dphi = " << std::endl
+              << dphi << std::endl;
+    std::cout << "theta = " << std::endl
+              << theta << std::endl;
+    std::cout << "alpha = " << std::endl
+              << alpha << std::endl;
+  }
 }
 
 bool StanceNMPC::checkConvergence()
@@ -156,8 +180,13 @@ bool StanceNMPC::checkConvergence()
 bool StanceNMPC::linearSearch()
 {
   // 线性搜索以提高收敛速度
-  double theta = 0.0; // 等式约束
-  double phi = 0.0;   // cost
+  theta = 0.0; // 等式约束
+  phi = 0.0;   // cost
+
+  auto x_alpha = x_nmpc;
+  auto u_alpha = u_nmpc;
+
+  dphi = 0.0; // 计算d_{cost}/d_{alpha}
 
   for (int k_l = 0; k_l < N + 1; ++k_l)
   {
@@ -188,20 +217,6 @@ bool StanceNMPC::linearSearch()
       Jphi_u.block<12, 1>(0, k_l) = A_constrain.transpose() * db_constrain + R * u_search;
     }
   }
-
-  double theta_max = 1e-6;
-  double theta_min = 5e-10;
-  double eta = 1e-4;
-  double byta_phi = 1e-6;
-  double byta_theta = 1e-6;
-  double byta_alpha = 0.5;
-  double alpha_min = 1e-4;
-
-  double alpha = 1.0;
-  auto x_alpha = x_nmpc;
-  auto u_alpha = u_nmpc;
-
-  double dphi = 0.0; // 计算d_{cost}/d_{alpha}
 
   for (int k_l = 0; k_l < N + 1; ++k_l)
   {
@@ -276,15 +291,7 @@ bool StanceNMPC::linearSearch()
     alpha = byta_alpha * alpha;
     //
   }
-  // std::cout << "i : " << sqp_loop << std::endl;
-  // std::cout << "phi = " << std::endl
-  //           << phi << std::endl;
-  // std::cout << "dphi = " << std::endl
-  //           << dphi << std::endl;
-  // std::cout << "theta = " << std::endl
-  //           << theta << std::endl;
-  // std::cout << "alpha = " << std::endl
-  //           << alpha << std::endl;
+
   // 优化完成
   if (dphi > -1e-3 and theta < 1e-6)
   {
@@ -292,6 +299,10 @@ bool StanceNMPC::linearSearch()
     // break;
     return true;
   }
+  return false;
+  // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
+  // x_nmpc += 0.001*get_solveX;
+  // u_nmpc += 0.001*get_solveU;
 }
 
 void StanceNMPC::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
@@ -354,9 +365,10 @@ void StanceNMPC::setupDynamics()
   flow_dynamic_.SetFoot(Eigen::Vector3d(0.0, -0.1, 0.0), Eigen::Vector3d(0.0, 0.1, 0.0),
                         Eigen::Vector3d(1, 1, 1).asDiagonal(), Eigen::Vector3d(1, 1, 1).asDiagonal());
 }
+
 void StanceNMPC::setupReference()
 {
-  x0 << 0, 0, 0 /*初始轴角*/, 0.0, 0, 0.0 /*初始角速度*/, -0.06, 0, 1.0 /*初始位置*/, 0, 0, 0 /*初始速度*/;
+  x0 << 0, 0, 0 /*初始轴角*/, 0.0, 0, 0.0 /*初始角速度*/, 0, 0, 1.0 /*初始位置*/, 0, 0, 0 /*初始速度*/;
   x_ref_k << 0.0, 0.0, 0.0 /*目标轴角*/, 0, 0, 0.0 /*目标角速度*/, 0.0, 0, 1.0 /*目标位置*/, 0, 0, 0 /*目标速度*/;
   for (int k_ref = 0; k_ref < N + 1; ++k_ref)
   {
@@ -383,248 +395,18 @@ void StanceNMPC::controlLoop()
     {
       prepareQpStructures(qp);
       solveQpProblems(qp, solution); // 解决QP问题
-                                     // linearSearch();
-                                     // 线性搜索以提高收敛速度
-      double theta = 0.0;            // 等式约束
-      double phi = 0.0;              // cost
-
-      double theta_max = 1e-6;
-      double theta_min = 5e-10;
-      double eta = 1e-4;
-      double byta_phi = 1e-6;
-      double byta_theta = 1e-6;
-      double byta_alpha = 0.5;
-      double alpha_min = 1e-4;
-
-      double alpha = 1.0;
-      auto x_alpha = x_nmpc;
-      auto u_alpha = u_nmpc;
-
-      double dphi = 0.0; // 计算d_{cost}/d_{alpha}
-
-      for (int k_l = 0; k_l < N + 1; ++k_l)
+      if (checkConvergence())
       {
-        x_search = x_nmpc.block<12, 1>(0, k_l);
-        u_search = u_nmpc.block<12, 1>(0, k_l);
-        if (k_l == N)
-        {
-          phi += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * QN * (x_search - x_ref.block<12, 1>(0, k_l));
-          Jphi_x.block<12, 1>(0, k_l) = QN * (x_search - x_ref.block<12, 1>(0, k_l));
-        }
-        else
-        {
-          x_search_next = x_nmpc.block<12, 1>(0, k_l + 1);
-          // 计算等式约束
-          flow_dynamic_.GetShootingDynamic(x_search, x_search_next, u_search, nullptr, nullptr, nullptr, &f_search);
-          f_search_v = f_search;
-          theta += 0.5 * (f_search_v.transpose()) * f_search_v;
-          // 计算x cost
-          phi += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * Q * (x_search - x_ref.block<12, 1>(0, k_l));
-          Jphi_x.block<12, 1>(0, k_l) = Q * (x_search - x_ref.block<12, 1>(0, k_l));
-          // 计算 u cost
-          flow_dynamic_.GetConstrain(u_search, A_constrain, f_constrain); // 获取约束方程
-          for (int k_b = 0; k_b < 24; ++k_b)
-          {
-            flow_dynamic_.Barrier(f_constrain(k_b), mu_barrier, theta_barrier, &b_constrain(k_b), &db_constrain(k_b), &ddb_constrain(k_b)); // 将约束方程转化为障碍方程
-          }
-          phi += b_constrain.sum() + 0.5 * u_search.transpose() * R * u_search;
-          Jphi_u.block<12, 1>(0, k_l) = A_constrain.transpose() * db_constrain + R * u_search;
-        }
-      }
-
-      for (int k_l = 0; k_l < N + 1; ++k_l)
-      {
-        dphi += get_solveX.block<12, 1>(0, k_l).transpose() * Jphi_x.block<12, 1>(0, k_l);
-        if (k_l < N)
-        {
-          dphi += get_solveU.block<12, 1>(0, k_l).transpose() * Jphi_u.block<12, 1>(0, k_l);
-        }
-      }
-
-      while (alpha > alpha_min)
-      {
-        double theta_alpha = 0.0;
-        double phi_alpha = 0.0;
-        x_alpha = x_nmpc + alpha * get_solveX;
-        u_alpha = u_nmpc + alpha * get_solveU;
-        //
-        for (int k_l = 0; k_l < N + 1; ++k_l)
-        {
-          x_search = x_alpha.block<12, 1>(0, k_l);
-          u_search = u_alpha.block<12, 1>(0, k_l);
-          if (k_l == N)
-          {
-            phi_alpha += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * QN * (x_search - x_ref.block<12, 1>(0, k_l));
-          }
-          else
-          {
-            x_search_next = x_alpha.block<12, 1>(0, k_l + 1);
-            // 计算等式约束
-            flow_dynamic_.GetShootingDynamic(x_search, x_search_next, u_search, nullptr, nullptr, nullptr, &f_search);
-            f_search_v = f_search;
-            theta_alpha += 0.5 * (f_search_v.transpose()) * f_search_v;
-            // 计算x cost
-            phi_alpha += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * Q * (x_search - x_ref.block<12, 1>(0, k_l));
-            // 计算 u cost
-            flow_dynamic_.GetConstrain(u_search, A_constrain, f_constrain); // 获取约束方程
-            for (int k_b = 0; k_b < 24; ++k_b)
-            {
-              flow_dynamic_.Barrier(f_constrain(k_b), mu_barrier, theta_barrier, &b_constrain(k_b), &db_constrain(k_b), &ddb_constrain(k_b)); // 将约束方程转化为障碍方程
-            }
-            phi_alpha += b_constrain.sum() + 0.5 * u_search.transpose() * R * u_search;
-          }
-        }
-
-        if (theta_alpha > theta_max)
-        {
-          if (theta_alpha < (1.0 - byta_theta) * theta)
-          {
-            x_nmpc = x_alpha;
-            u_nmpc = u_alpha;
-            break;
-          }
-        }
-        else if ((std::max(theta_alpha, theta) < theta_min) and (dphi < 0.0))
-        {
-          if (phi_alpha < phi + eta * alpha * dphi)
-          {
-            x_nmpc = x_alpha;
-            u_nmpc = u_alpha;
-            break;
-          }
-        }
-        else
-        {
-          if ((phi_alpha < phi - byta_phi * theta) or (theta_alpha < (1.0 - byta_theta) * theta))
-          {
-            x_nmpc = x_alpha;
-            u_nmpc = u_alpha;
-            break;
-          }
-        }
-        alpha = byta_alpha * alpha;
-        //
-      }
-      // std::cout << "i : " << sqp_loop << std::endl;
-      // std::cout << "phi = " << std::endl
-      //           << phi << std::endl;
-      // std::cout << "dphi = " << std::endl
-      //           << dphi << std::endl;
-      // std::cout << "theta = " << std::endl
-      //           << theta << std::endl;
-      // std::cout << "alpha = " << std::endl
-      //           << alpha << std::endl;
-      // 优化完成
-      if (dphi > -1e-3 and theta < 1e-6)
-      {
-        std::cout << "nmpc solve success!" << std::endl;
+        // printOptimizationInfo(sqp_loop, true);
         break;
-        // return true;
       }
-      // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
-      // x_nmpc += 0.001*get_solveX;
-      // u_nmpc += 0.001*get_solveU;
+      // printOptimizationInfo(sqp_loop, false);
     }
-    // std::cout << "迭代次数 : " << nrep << std::endl;
-    // std::cout << "求解状态 = " << std::endl
-    //           << x_nmpc << std::endl; // 求解状态量
-    // std::cout << "求解力矩 = " << std::endl
-    //           << u_nmpc << std::endl; // 求解力
-    // std::cout << "最大摩擦锥约束违反量（负数） = " << std::endl
-    //           << f_constrain_all.minCoeff() << std::endl; //
-    // std::cout << "最大动力学方程违反量（正数） = " << std::endl
-    //           << f_all.cwiseAbs().maxCoeff() << std::endl;
-    // std::cout << "动力学方程违反量 = " << std::endl
-    //           << f_all << std::endl;
   }
   std::cout << "nmpc平均求解时间 = " << timer_test.get() / double(Nrep) << std::endl;
   // return ;
 }
 
-// Draw plot with matplotlibcpp (you would typically separate plotting from control logic)
-void StanceNMPC::drawPlot()
-{
-
-  double box_x = 0.10;
-  double box_y = 0.25;
-  double box_z = 0.50;
-
-  Eigen::Matrix<double, 3, 10> box_list_raw;
-  Eigen::Matrix<double, 3, 6> box_list_;
-  box_list_raw << Eigen::Matrix<double, 3, 1>(0.5 * box_x, 0.5 * box_y, 0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(0.5 * box_x, 0.5 * box_y, -0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(0.5 * box_x, -0.5 * box_y, -0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(0.5 * box_x, -0.5 * box_y, 0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(0.5 * box_x, 0.5 * box_y, 0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(-0.5 * box_x, 0.5 * box_y, 0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(-0.5 * box_x, 0.5 * box_y, -0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(-0.5 * box_x, -0.5 * box_y, -0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(-0.5 * box_x, -0.5 * box_y, 0.5 * box_z),
-      Eigen::Matrix<double, 3, 1>(-0.5 * box_x, 0.5 * box_y, 0.5 * box_z);
-
-  if (show_flag_read)
-  {
-    for (int show_loop = 0; show_loop < N + 1; ++show_loop)
-    {
-      Eigen::Matrix<double, 3, 1> r_k = x_nmpc.block<3, 1>(0, show_loop);
-      Eigen::Matrix<double, 3, 1> p_k = x_nmpc.block<3, 1>(6, show_loop);
-      Eigen::Matrix<double, 3, 10> box_list = expm(r_k) * box_list_raw;
-      box_list.colwise() += p_k;
-
-      std::vector<double> x_box;
-      std::vector<double> y_box;
-      std::vector<double> z_box;
-
-      x_box.resize(10);
-
-      y_box.resize(10);
-
-      z_box.resize(10);
-      for (int k_box = 0; k_box < 10; ++k_box)
-      {
-        x_box[k_box] = box_list(0, k_box);
-        y_box[k_box] = box_list(1, k_box);
-        z_box[k_box] = box_list(2, k_box);
-      }
-      matplotlibcpp::figure(1);
-      std::map<std::string, std::string> map_;
-      matplotlibcpp::plot3(x_box, y_box, z_box, map_, 1);
-
-      // d R*I*Rt*w = tau
-      //  R*I*Rt*dw + [w]*R*I*Rt*w*dt = Tau*dt
-
-      std::vector<double> x_sky = {0};
-      std::vector<double> y_sky = {0};
-      std::vector<double> z_sky = {1.0};
-
-      std::vector<double> x_ground = {0};
-      std::vector<double> y_ground = {0};
-      std::vector<double> z_ground = {-0.05};
-
-      matplotlibcpp::xlim(-0.5, 0.5);
-      matplotlibcpp::ylim(-0.5, 0.5);
-
-      // matplotlibcpp::text(0,0,2.0,"sky");
-
-      matplotlibcpp::plot3(x_sky, y_sky, z_sky, map_, 1);
-      matplotlibcpp::plot3(x_ground, y_ground, z_ground, map_, 1);
-      matplotlibcpp::set_zlabel("sky");
-      // matplotlibcpp::
-      // matplotlibcpp::zlim(-1, 1);
-      // matplotlibcpp::plot3({);
-      // matplotlibcpp::show();
-
-      matplotlibcpp::pause(0.1);
-      matplotlibcpp::clf();
-    }
-  }
-  // std::cout << QN_read << std::endl;
-}
-
-// Additional private or public methods as required
-// ...
-
-// Example of a main function using the StanceNMPC class
 int main()
 {
   try
