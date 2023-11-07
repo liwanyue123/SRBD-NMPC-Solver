@@ -80,7 +80,8 @@
         "bit": "cpp",
         "matrixfunctions": "cpp",
         "eigen": "cpp",
-        "core": "cpp"
+        "core": "cpp",
+        "hash_map": "cpp"
     },
     "cpplint.root": "${workspaceFolder}",
     "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",

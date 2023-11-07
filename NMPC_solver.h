@@ -60,7 +60,6 @@ private:
     Eigen::MatrixXd x_ref;
 
     Eigen::MatrixXd get_solveX;
-
     Eigen::MatrixXd get_solveU;
 
     hpipm::OcpQpIpmSolverSettings solver_settings;
@@ -71,7 +70,7 @@ private:
 
     void prepareQpStructures(std::vector<hpipm::OcpQp> &qp);
 
-    void solveQpProblems(std::vector<hpipm::OcpQpSolution> &solution);
+    void solveQpProblems(std::vector<hpipm::OcpQp> &qp, std::vector<hpipm::OcpQpSolution> &solution);
 
     void updateStateAndControl(std::vector<hpipm::OcpQpSolution> &solution);
 
@@ -95,6 +94,15 @@ private:
     Eigen::MatrixXd f_constrain_all, f_all;
     // 障碍方程系数
     Eigen::VectorXd b_constrain, db_constrain, ddb_constrain; // 障碍方程
+
+    Eigen::MatrixXd Jphi_x;
+    Eigen::MatrixXd Jphi_u;
+
+    Eigen::VectorXd x_search;
+    Eigen::VectorXd x_search_next;
+    Eigen::VectorXd u_search;
+    Eigen::MatrixXd f_search;
+    Eigen::VectorXd f_search_v;
 };
 
 #endif // STANCE_NMPC_H

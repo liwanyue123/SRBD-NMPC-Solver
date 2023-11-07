@@ -123,10 +123,20 @@ void StanceNMPC::initialize()
   b_constrain.resize(24);
   db_constrain.resize(24);
   ddb_constrain.resize(24);
-  // f_constrain_all.resize(24, N);
-  // f_all.resize(12, N);
 
-  // qp.resize(N + 1);       // 初始化
+  get_solveX.resize(12, N + 1);
+  get_solveX.setZero();
+  get_solveU.resize(12, N);
+  get_solveU.setZero();
+
+  Jphi_x = Eigen::MatrixXd::Zero(12, N + 1);
+  Jphi_u = Eigen::MatrixXd::Zero(12, N);
+
+  x_search = Eigen::VectorXd::Zero(12);
+  x_search_next = Eigen::VectorXd::Zero(12);
+  u_search = Eigen::VectorXd::Zero(12);
+  f_search = Eigen::MatrixXd::Zero(12, 1);
+  f_search_v = Eigen::VectorXd::Zero(12);
 }
 
 void StanceNMPC::printOptimizationInfo(int sqp_loop)
@@ -146,29 +156,8 @@ bool StanceNMPC::checkConvergence()
 bool StanceNMPC::linearSearch()
 {
   // 线性搜索以提高收敛速度
-  Eigen::MatrixXd A_constrain, f_constrain;
-  Eigen::MatrixXd f_constrain_all, f_all;
-
-  f_constrain_all.resize(24, N);
-  f_all.resize(12, N);
-
-  double mu_barrier;                                        // 障碍方程系数
-  double theta_barrier;                                     // 障碍方程系数
-  Eigen::VectorXd b_constrain, db_constrain, ddb_constrain; // 障碍方程
-  b_constrain.resize(24);
-  db_constrain.resize(24);
-  ddb_constrain.resize(24);
-
   double theta = 0.0; // 等式约束
   double phi = 0.0;   // cost
-  Eigen::MatrixXd Jphi_x = Eigen::MatrixXd::Zero(12, N + 1);
-  Eigen::MatrixXd Jphi_u = Eigen::MatrixXd::Zero(12, N);
-
-  Eigen::VectorXd x_search = Eigen::VectorXd::Zero(12);
-  Eigen::VectorXd x_search_next = Eigen::VectorXd::Zero(12);
-  Eigen::VectorXd u_search = Eigen::VectorXd::Zero(12);
-  Eigen::MatrixXd f_search = Eigen::MatrixXd::Zero(12, 1);
-  Eigen::VectorXd f_search_v = Eigen::VectorXd::Zero(12);
 
   for (int k_l = 0; k_l < N + 1; ++k_l)
   {
@@ -287,11 +276,6 @@ bool StanceNMPC::linearSearch()
     alpha = byta_alpha * alpha;
     //
   }
-
-  // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
-  // x_nmpc += 0.001*get_solveX;
-  // u_nmpc += 0.001*get_solveU;
-
   // std::cout << "i : " << sqp_loop << std::endl;
   // std::cout << "phi = " << std::endl
   //           << phi << std::endl;
@@ -308,6 +292,56 @@ bool StanceNMPC::linearSearch()
     // break;
     return true;
   }
+}
+
+void StanceNMPC::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
+{
+
+  for (int i = 0; i < N; ++i)
+  {
+    Eigen::MatrixXd A_dynamic, B_dynamic, b_dynamic;
+
+    x_mpc = x_nmpc.block<12, 1>(0, i);
+    x_mpc_next = x_nmpc.block<12, 1>(0, i + 1);
+    u_mpc = u_nmpc.block<12, 1>(0, i);
+    flow_dynamic_.GetShootingDynamic(x_mpc, x_mpc_next, u_mpc, &A_dynamic, &B_dynamic, &b_dynamic, nullptr); // 获取离散动力学矩阵
+    f_all.block<12, 1>(0, i) = -b_dynamic;
+    flow_dynamic_.GetConstrain(u_mpc, A_constrain, f_constrain); // 获取约束方程
+    f_constrain_all.block<24, 1>(0, i) = f_constrain;
+    for (int k = 0; k < 24; ++k)
+    {
+      flow_dynamic_.Barrier(f_constrain(k), mu_barrier, theta_barrier, &b_constrain(k), &db_constrain(k), &ddb_constrain(k)); // 将约束方程转化为障碍方程
+    }
+
+    qp[i].A = A_dynamic;
+    qp[i].B = B_dynamic;
+    qp[i].b = b_dynamic;
+    // qp[i].C = Eigen::Matrix<double, 20, 12>::Zero(); // 只有必须严格满足的不等式约束会启用此硬约束，开启后求解速度会大幅下降
+    // qp[i].D = f_all;
+    // qp[i].ug = ub;
+    // qp[i].lg = lb;
+    qp[i].Q = Q;
+    qp[i].q = Q * (x_mpc - x_ref.block<12, 1>(0, i));
+    qp[i].S = S;
+    qp[i].R = R + A_constrain.transpose() * ddb_constrain.asDiagonal() * A_constrain;
+    qp[i].r = R * u_mpc + A_constrain.transpose() * db_constrain; // eb = diag(db)*Ja
+  }
+  qp[N].Q = QN;
+  qp[N].q = QN * (x_mpc_next - x_ref.block<12, 1>(0, N));
+}
+
+void StanceNMPC::solveQpProblems(std::vector<hpipm::OcpQp> &qp, std::vector<hpipm::OcpQpSolution> &solution)
+{
+  // 使用HPIPM求解器解决QP问题
+  hpipm::OcpQpIpmSolver solver(qp, solver_settings);
+  const auto res = solver.solve(x0 - x_nmpc.block<12, 1>(0, 0), qp, solution); // 求解 qp问题
+
+  for (int i = 0; i < N; ++i)
+  {
+    get_solveX.block<12, 1>(0, i) = solution[i].x;
+    get_solveU.block<12, 1>(0, i) = solution[i].u;
+  }
+  get_solveX.block<12, 1>(0, N) = solution[N].x;
 }
 
 void StanceNMPC::setupDynamics()
@@ -347,69 +381,26 @@ void StanceNMPC::controlLoop()
     // sqp为了收敛循环
     for (int sqp_loop = 0; sqp_loop < loop_read; ++sqp_loop)
     {
+      prepareQpStructures(qp);
+      solveQpProblems(qp, solution); // 解决QP问题
+                                     // linearSearch();
+                                     // 线性搜索以提高收敛速度
+      double theta = 0.0;            // 等式约束
+      double phi = 0.0;              // cost
 
-      for (int i = 0; i < N; ++i)
-      {
-        Eigen::MatrixXd A_dynamic, B_dynamic, b_dynamic;
+      double theta_max = 1e-6;
+      double theta_min = 5e-10;
+      double eta = 1e-4;
+      double byta_phi = 1e-6;
+      double byta_theta = 1e-6;
+      double byta_alpha = 0.5;
+      double alpha_min = 1e-4;
 
-        x_mpc = x_nmpc.block<12, 1>(0, i);
-        x_mpc_next = x_nmpc.block<12, 1>(0, i + 1);
-        u_mpc = u_nmpc.block<12, 1>(0, i);
-        flow_dynamic_.GetShootingDynamic(x_mpc, x_mpc_next, u_mpc, &A_dynamic, &B_dynamic, &b_dynamic, nullptr); // 获取离散动力学矩阵
-        f_all.block<12, 1>(0, i) = -b_dynamic;
-        flow_dynamic_.GetConstrain(u_mpc, A_constrain, f_constrain); // 获取约束方程
-        f_constrain_all.block<24, 1>(0, i) = f_constrain;
-        for (int k = 0; k < 24; ++k)
-        {
-          flow_dynamic_.Barrier(f_constrain(k), mu_barrier, theta_barrier, &b_constrain(k), &db_constrain(k), &ddb_constrain(k)); // 将约束方程转化为障碍方程
-        }
+      double alpha = 1.0;
+      auto x_alpha = x_nmpc;
+      auto u_alpha = u_nmpc;
 
-        qp[i].A = A_dynamic;
-        qp[i].B = B_dynamic;
-        qp[i].b = b_dynamic;
-        // qp[i].C = Eigen::Matrix<double, 20, 12>::Zero(); // 只有必须严格满足的不等式约束会启用此硬约束，开启后求解速度会大幅下降
-        // qp[i].D = f_all;
-        // qp[i].ug = ub;
-        // qp[i].lg = lb;
-        qp[i].Q = Q;
-        qp[i].q = Q * (x_mpc - x_ref.block<12, 1>(0, i));
-        qp[i].S = S;
-        qp[i].R = R + A_constrain.transpose() * ddb_constrain.asDiagonal() * A_constrain;
-        qp[i].r = R * u_mpc + A_constrain.transpose() * db_constrain; // eb = diag(db)*Ja
-      }
-      qp[N].Q = QN;
-      qp[N].q = QN * (x_mpc_next - x_ref.block<12, 1>(0, N));
-
-      hpipm::OcpQpIpmSolver solver(qp, solver_settings);
-      const auto res = solver.solve(x0 - x_nmpc.block<12, 1>(0, 0), qp, solution); // 求解 qp问题
-
-      Eigen::MatrixXd get_solveX;
-      get_solveX.resize(12, N + 1);
-      get_solveX.setZero();
-      Eigen::MatrixXd get_solveU;
-      get_solveU.resize(12, N);
-      get_solveU.setZero();
-      for (int i = 0; i <= N; ++i)
-      {
-        get_solveX.block<12, 1>(0, i) = solution[i].x;
-      }
-
-      for (int i = 0; i < N; ++i)
-      {
-        get_solveU.block<12, 1>(0, i) = solution[i].u;
-      }
-
-      // 线性搜索以提高收敛速度
-      double theta = 0.0; // 等式约束
-      double phi = 0.0;   // cost
-      Eigen::MatrixXd Jphi_x = Eigen::MatrixXd::Zero(12, N + 1);
-      Eigen::MatrixXd Jphi_u = Eigen::MatrixXd::Zero(12, N);
-
-      Eigen::VectorXd x_search = Eigen::VectorXd::Zero(12);
-      Eigen::VectorXd x_search_next = Eigen::VectorXd::Zero(12);
-      Eigen::VectorXd u_search = Eigen::VectorXd::Zero(12);
-      Eigen::MatrixXd f_search = Eigen::MatrixXd::Zero(12, 1);
-      Eigen::VectorXd f_search_v = Eigen::VectorXd::Zero(12);
+      double dphi = 0.0; // 计算d_{cost}/d_{alpha}
 
       for (int k_l = 0; k_l < N + 1; ++k_l)
       {
@@ -440,20 +431,6 @@ void StanceNMPC::controlLoop()
           Jphi_u.block<12, 1>(0, k_l) = A_constrain.transpose() * db_constrain + R * u_search;
         }
       }
-
-      double theta_max = 1e-6;
-      double theta_min = 5e-10;
-      double eta = 1e-4;
-      double byta_phi = 1e-6;
-      double byta_theta = 1e-6;
-      double byta_alpha = 0.5;
-      double alpha_min = 1e-4;
-
-      double alpha = 1.0;
-      auto x_alpha = x_nmpc;
-      auto u_alpha = u_nmpc;
-
-      double dphi = 0.0; // 计算d_{cost}/d_{alpha}
 
       for (int k_l = 0; k_l < N + 1; ++k_l)
       {
@@ -528,26 +505,25 @@ void StanceNMPC::controlLoop()
         alpha = byta_alpha * alpha;
         //
       }
-
-      // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
-      // x_nmpc += 0.001*get_solveX;
-      // u_nmpc += 0.001*get_solveU;
-
-      std::cout << "i : " << sqp_loop << std::endl;
-      std::cout << "phi = " << std::endl
-                << phi << std::endl;
-      std::cout << "dphi = " << std::endl
-                << dphi << std::endl;
-      std::cout << "theta = " << std::endl
-                << theta << std::endl;
-      std::cout << "alpha = " << std::endl
-                << alpha << std::endl;
+      // std::cout << "i : " << sqp_loop << std::endl;
+      // std::cout << "phi = " << std::endl
+      //           << phi << std::endl;
+      // std::cout << "dphi = " << std::endl
+      //           << dphi << std::endl;
+      // std::cout << "theta = " << std::endl
+      //           << theta << std::endl;
+      // std::cout << "alpha = " << std::endl
+      //           << alpha << std::endl;
       // 优化完成
       if (dphi > -1e-3 and theta < 1e-6)
       {
         std::cout << "nmpc solve success!" << std::endl;
         break;
+        // return true;
       }
+      // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
+      // x_nmpc += 0.001*get_solveX;
+      // u_nmpc += 0.001*get_solveU;
     }
     // std::cout << "迭代次数 : " << nrep << std::endl;
     // std::cout << "求解状态 = " << std::endl
