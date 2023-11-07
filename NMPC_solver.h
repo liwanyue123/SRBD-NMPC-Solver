@@ -11,10 +11,14 @@
 #include "hpipm-cpp/include/hpipm-cpp/hpipm-cpp.hpp"
 #include "dynamic/flow_tool.h"
 #include "dynamic/flow_dynamic.h"
-#include "matplotlibcpp.h"
+
 #include <yaml-cpp/yaml.h>
 #include <thread>
 #include <mutex>
+template <typename T>
+using Vec3 = Eigen::Matrix<T, 3, 1>;
+template <typename T>
+using Vec9 = Eigen::Matrix<T, 9, 1>;
 template <typename T>
 using Vec12 = Eigen::Matrix<T, 12, 1>;
 template <typename T>

@@ -25,35 +25,14 @@ bool StanceNMPC::readYaml(const std::string &config_file)
   {
     config = YAML::LoadFile("../mpc_option.yaml");
 
-    Q_read[0] = config["K_r"][0].as<double>();
-    Q_read[1] = config["K_r"][1].as<double>();
-    Q_read[2] = config["K_r"][2].as<double>();
-    Q_read[3] = config["K_w"][0].as<double>();
-    Q_read[4] = config["K_w"][1].as<double>();
-    Q_read[5] = config["K_w"][2].as<double>();
-    Q_read[6] = config["K_p"][0].as<double>();
-    Q_read[7] = config["K_p"][1].as<double>();
-    Q_read[8] = config["K_p"][2].as<double>();
-    Q_read[9] = config["K_v"][0].as<double>();
-    Q_read[10] = config["K_v"][1].as<double>();
-    Q_read[11] = config["K_v"][2].as<double>();
+    std::vector<double> Q_values = config["MPC"]["Q"].as<std::vector<double>>();
+    Q_read = Eigen::Map<Vec12<double>>(Q_values.data());
 
-    QN_read[0] = config["K_r_N"][0].as<double>();
-    QN_read[1] = config["K_r_N"][1].as<double>();
-    QN_read[2] = config["K_r_N"][2].as<double>();
-    QN_read[3] = config["K_w_N"][0].as<double>();
-    QN_read[4] = config["K_w_N"][1].as<double>();
-    QN_read[5] = config["K_w_N"][2].as<double>();
-    QN_read[6] = config["K_p_N"][0].as<double>();
-    QN_read[7] = config["K_p_N"][1].as<double>();
-    QN_read[8] = config["K_p_N"][2].as<double>();
-    QN_read[9] = config["K_v_N"][0].as<double>();
-    QN_read[10] = config["K_v_N"][1].as<double>();
-    QN_read[11] = config["K_v_N"][2].as<double>();
+    std::vector<double> Qf_values = config["MPC"]["Qf"].as<std::vector<double>>();
+    QN_read = Eigen::Map<Vec12<double>>(Qf_values.data());
 
-    L_read[0] = config["Lbody"][0].as<double>();
-    L_read[1] = config["Lbody"][1].as<double>();
-    L_read[2] = config["Lbody"][2].as<double>();
+    std::vector<double> L_values = config["PhysicalParameters"]["Lbody"].as<std::vector<double>>();
+    L_read = Eigen::Map<Vec3<double>>(L_values.data());
 
     Qu_read = config["K_u"].as<double>();
     mu_barrier = config["mu_b"].as<double>();
