@@ -342,7 +342,7 @@ void NMPCSolver::setupReference()
 {
   // [axis angle, angular velocity, CoM position, CoM velocity]
   x0_ << 0, 0, 0, 0, 0, 0, 0, 0, 1.0, 0, 0, 0;
-  x_ref_k_ << 0, 0, 0, 0, 0, 0, 0, 0, 1.0, 0, 0, 0;
+  x_ref_k_ << 0, 0, 0.2, 0, 0, 0, 0.5, 0, 1.0, 0, 0, 0;
   for (int k_ref = 0; k_ref < N_ + 1; ++k_ref)
   {
     // Propagate the reference state across the horizon
