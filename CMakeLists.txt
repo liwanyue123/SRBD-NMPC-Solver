@@ -33,4 +33,4 @@ add_executable(${PROJECT_NAME}
   NMPC_solver.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} hpipm_cpp flow_dynamic yaml-cpp  )
+target_link_libraries(${PROJECT_NAME} hpipm_cpp SRB_dynamics yaml-cpp  )

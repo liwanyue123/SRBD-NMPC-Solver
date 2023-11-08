@@ -9,13 +9,14 @@
 #include <iostream>
 #include "utils/timer.h"
 #include "hpipm-cpp/include/hpipm-cpp/hpipm-cpp.hpp"
-#include "dynamics/flow_tool.h"
-#include "dynamics/flow_dynamic.h"
+#include "dynamics/orientation_tool.h"
+#include "dynamics/SRB_dynamics.h"
 
 #include <yaml-cpp/yaml.h>
 #include <thread>
 #include <mutex>
 #include "utils/cppTypes.h"
+
 class NMPCSolver
 {
 public:
@@ -73,7 +74,7 @@ private:
 
     hpipm::OcpQpIpmSolverSettings solver_settings_;
 
-    FlowDynamic flow_dynamic_;
+    SRBDynamic flow_dynamic_;
     Eigen::Matrix<double, 3, 1> L_;
 
     // barrier_function

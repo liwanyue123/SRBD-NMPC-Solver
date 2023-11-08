@@ -1,8 +1,8 @@
 
-#include "flow_dynamic.h"
-#include "flow_tool.h"
+#include "SRB_dynamics.h"
+#include "orientation_tool.h"
 
-FlowDynamic::FlowDynamic()
+SRBDynamic::SRBDynamic()
 {
   pf_.resize(6, 1);
   pf_.setZero();
@@ -23,9 +23,9 @@ FlowDynamic::FlowDynamic()
   Ng_ = 24;
 }
 
-FlowDynamic::~FlowDynamic() {}
+SRBDynamic::~SRBDynamic() {}
 
-void FlowDynamic::SetFoot(const Vec &pr, const Vec &pl, const Mat &R0, const Mat &R1)
+void SRBDynamic::SetFoot(const Vec &pr, const Vec &pl, const Mat &R0, const Mat &R1)
 {
   pf_.block<3, 1>(0, 0) = pr.block<3, 1>(0, 0);
   pf_.block<3, 1>(3, 0) = pl.block<3, 1>(0, 0);
@@ -33,22 +33,22 @@ void FlowDynamic::SetFoot(const Vec &pr, const Vec &pl, const Mat &R0, const Mat
   Rf_.block<3, 3>(3, 0) = R1;
 }
 
-void FlowDynamic::SetMass(scale_t m)
+void SRBDynamic::SetMass(scale_t m)
 {
   m_ = m;
 }
 
-void FlowDynamic::SetMPCdt(scale_t dt)
+void SRBDynamic::SetMPCdt(scale_t dt)
 {
   dt_ = dt;
 }
 
-void FlowDynamic::SetInertia(const Mat &L)
+void SRBDynamic::SetInertia(const Mat &L)
 {
   Lbody_ = L.inverse();
 }
 
-FlowDynamic::Vec FlowDynamic::GetFoot(int N)
+SRBDynamic::Vec SRBDynamic::GetFoot(int N)
 {
   if (N == 0)
   {
@@ -60,7 +60,7 @@ FlowDynamic::Vec FlowDynamic::GetFoot(int N)
   }
 }
 
-FlowDynamic::Mat FlowDynamic::GetFootR(int N)
+SRBDynamic::Mat SRBDynamic::GetFootR(int N)
 {
   if (N == 0)
   {
@@ -72,7 +72,7 @@ FlowDynamic::Mat FlowDynamic::GetFootR(int N)
   }
 }
 
-void FlowDynamic::GetDynamic(const Vec &x, const Vec &x_next, const Vec &u, Mat *pA, Mat *pB, Mat *pb, Mat *pf)
+void SRBDynamic::GetDynamic(const Vec &x, const Vec &x_next, const Vec &u, Mat *pA, Mat *pB, Mat *pb, Mat *pf)
 {
   // rk中的k表示下一时刻状态
   // rp中的p表示当前时刻状态
@@ -165,7 +165,7 @@ void FlowDynamic::GetDynamic(const Vec &x, const Vec &x_next, const Vec &u, Mat 
   }
 }
 
-void FlowDynamic::GetContinuousDynamic(const Vec &x, const Vec &u, const Mat &j_x, const Mat &j_u, Mat *dx, Mat *j_dx, Mat *j_du)
+void SRBDynamic::GetContinuousDynamic(const Vec &x, const Vec &u, const Mat &j_x, const Mat &j_u, Mat *dx, Mat *j_dx, Mat *j_du)
 {
   Val r = x.block<3, 1>(0, 0);
   Val l = x.block<3, 1>(3, 0);
@@ -233,7 +233,7 @@ void FlowDynamic::GetContinuousDynamic(const Vec &x, const Vec &u, const Mat &j_
   }
 }
 
-void FlowDynamic::GetShootingDynamic(const Vec &x, const Vec &x_next, const Vec &u, Mat *pA, Mat *pB, Mat *pb, Mat *pf)
+void SRBDynamic::GetShootingDynamic(const Vec &x, const Vec &x_next, const Vec &u, Mat *pA, Mat *pB, Mat *pb, Mat *pf)
 {
   // rk中的k表示下一时刻状态
   // rp中的p表示当前时刻状态
@@ -327,7 +327,7 @@ void FlowDynamic::GetShootingDynamic(const Vec &x, const Vec &x_next, const Vec 
   }
 }
 
-void FlowDynamic::GetConstrain(const Vec &u, Mat &Ac, Mat &f)
+void SRBDynamic::GetConstrain(const Vec &u, Mat &Ac, Mat &f)
 {
   // 两腿的摩擦锥约束
   Ac = Mat::Zero(Ng_, Nu_);
@@ -352,7 +352,7 @@ void FlowDynamic::GetConstrain(const Vec &u, Mat &Ac, Mat &f)
   f = Ac * u + b;
 }
 
-void FlowDynamic::Barrier(scale_t value, scale_t mu, scale_t theta, scale_t *b, scale_t *db, scale_t *ddb)
+void SRBDynamic::Barrier(scale_t value, scale_t mu, scale_t theta, scale_t *b, scale_t *db, scale_t *ddb)
 {
   if (value > theta)
   {

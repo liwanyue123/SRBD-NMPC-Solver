@@ -1,4 +1,4 @@
 
-add_library(flow_dynamic
-  flow_dynamic.cpp
+add_library(SRB_dynamics
+  SRB_dynamics.cpp
 )

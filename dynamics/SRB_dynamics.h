@@ -1,5 +1,5 @@
-#ifndef MPC_FLOW_DYNAMIC_H_
-#define MPC_FLOW_DYNAMIC_H_
+#ifndef MPC_SRB_DYNAMICS_H_
+#define MPC_SRB_DYNAMICS_H_
 
 #include <eigen3/Eigen/Eigen>
 #include <eigen3/Eigen/Core>
@@ -10,7 +10,7 @@
 
 /*! @brief SRBD 动力学模型
  */
-class FlowDynamic
+class SRBDynamic
 {
 public:
   using scale_t = double;
@@ -22,8 +22,8 @@ public:
   using Box = Eigen::Matrix<int, Eigen::Dynamic, 1>;
   using VecV = std::vector<Vec>;
 
-  FlowDynamic();
-  ~FlowDynamic();
+  SRBDynamic();
+  ~SRBDynamic();
 
   /*! @brief 设定两足端位置与姿态
    */
@@ -115,4 +115,4 @@ private:
   int Ng_; //! 约束数组
 };
 
-#endif // MPC_FLOW_DYNAMIC_H_
+#endif // MPC_SRB_DYNAMICS_H_

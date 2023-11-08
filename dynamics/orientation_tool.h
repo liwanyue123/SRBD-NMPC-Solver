@@ -1,5 +1,5 @@
-#ifndef FLOW_TOOL_H_
-#define FLOW_TOOL_H_
+#ifndef ORIENTATION_TOOL_H_
+#define ORIENTATION_TOOL_H_
 
 #include <iostream>
 #include <eigen3/Eigen/Eigen>
@@ -226,4 +226,4 @@ void djlt(const Eigen::Matrix<T, 3, 1> &val, Eigen::Matrix<T, 3, 3> *djltx, Eige
   // return (0.5*cot*theta)*I + (1.0-(0.5*cot*theta))*(V*V+I) - (0.5*(theta))*(V);
 }
 
-#endif // FLOW_TOOL_H_
+#endif // ORIENTATION_TOOL_H_
