@@ -1,4 +1,4 @@
 
-add_library(SRB_dynamics
-  SRB_dynamics.cpp
+add_library(SRBD_model
+  SRBD_model.cpp
 )

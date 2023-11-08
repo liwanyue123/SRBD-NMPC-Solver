@@ -10,7 +10,7 @@
 #include "utils/timer.h"
 #include "hpipm-cpp/include/hpipm-cpp/hpipm-cpp.hpp"
 #include "dynamics/orientation_tool.h"
-#include "dynamics/SRB_dynamics.h"
+#include "dynamics/SRBD_model.h"
 
 #include <yaml-cpp/yaml.h>
 #include <thread>
@@ -39,7 +39,7 @@ private:
 
     bool linearSearch();
 
-    void printOptimizationInfo(int sqp_max_loop_);
+    void printOptimizationInfo();
 
     bool readYaml(const std::string &config_file);
 
@@ -53,14 +53,13 @@ private:
     Eigen::Matrix<double, 12, 12> R_; // force
     Eigen::Matrix<double, 12, 12> Qf_;
 
-    int N_test_rep_;   // 测试次数
-    int sqp_max_loop_; // sqp 迭代最大次数
-    int N_;            // 预测步长
+    int N_test_rep_;   // Number of repetitions for testing
+    int sqp_max_loop_; // Maximum number of SQP iterations
+    int N_;            // NMPC horizon (prediction horizon)
+
     double dt_MPC_;
 
-    Eigen::MatrixXd x_nmpc_;
-    Eigen::MatrixXd u_nmpc_;
-
+    // [axis angle, angular velocity, CoM position, CoM velocity]
     Eigen::VectorXd x0_;
     Eigen::MatrixXd x_ref_;
     Eigen::Matrix<double, 12, 1> x_ref_k_;
@@ -68,13 +67,16 @@ private:
     Eigen::MatrixXd x_solved_;
     Eigen::MatrixXd u_solved_;
 
+    Eigen::MatrixXd x_nmpc_;
+    Eigen::MatrixXd u_nmpc_;
+
     Eigen::VectorXd x_mpc_;
     Eigen::VectorXd x_mpc_next_;
     Eigen::VectorXd u_mpc_;
 
     hpipm::OcpQpIpmSolverSettings solver_settings_;
 
-    SRBDynamic flow_dynamic_;
+    SRBDModel flow_dynamic_;
     Eigen::Matrix<double, 3, 1> L_;
 
     // barrier_function

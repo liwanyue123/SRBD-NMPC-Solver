@@ -17,7 +17,6 @@ NMPCSolver::~NMPCSolver()
 // Read configuration from YAML file
 bool NMPCSolver::readYaml(const std::string &config_file)
 {
-  // 读取参数
   YAML::Node config;
   try
   {
@@ -53,10 +52,7 @@ bool NMPCSolver::readYaml(const std::string &config_file)
 // Initialize NMPC parameters and matrices
 void NMPCSolver::initialize()
 {
-  // 初始化参数
-
   S_.setZero();
-
   Q_ = Q_read_.asDiagonal();
   R_ = R_read_ * Eigen::Matrix<double, 12, 12>::Identity();
   Qf_ = static_cast<double>(N_) * Qf_read_.asDiagonal();
@@ -70,7 +66,7 @@ void NMPCSolver::initialize()
   x0_.resize(12, 1);
   x_ref_.resize(12, N_ + 1);
 
-  // hpipm求解参数
+  // hpipm params
   solver_settings_.mode = hpipm::HpipmMode::Speed;
   solver_settings_.iter_max = 30;
   solver_settings_.alpha_min = 1e-8;
@@ -114,50 +110,52 @@ void NMPCSolver::initialize()
   f_search_v_ = Eigen::VectorXd::Zero(12);
 }
 
-void NMPCSolver::printOptimizationInfo(int sqp_loop)
+void NMPCSolver::printOptimizationInfo()
 {
 
-  std::cout << "迭代次数 : " << N_test_rep_ << std::endl;
-  std::cout << "求解状态 = " << std::endl
-            << x_nmpc_ << std::endl; // 求解状态量
-  std::cout << "求解力矩 = " << std::endl
-            << u_nmpc_ << std::endl; // 求解力
-  std::cout << "最大摩擦锥约束违反量（负数） = " << std::endl
-            << f_constrain_all_.minCoeff() << std::endl; //
-  std::cout << "最大动力学方程违反量（正数） = " << std::endl
-            << f_all_.cwiseAbs().maxCoeff() << std::endl;
-  std::cout << "动力学方程违反量 = " << std::endl
-            << f_all_ << std::endl;
+  // std::cout << "Testing repetitions: " << N_test_rep_ << std::endl;
+  // std::cout << "Solution state = " << std::endl
+  //           << x_nmpc_ << std::endl; // Output the solved state variables
+  // std::cout << "Solution torque = " << std::endl
+  //           << u_nmpc_ << std::endl; // Output the solved torque
+  // std::cout << "Maximum friction cone constraint violation (negative value) = " << std::endl
+  //           << f_constrain_all_.minCoeff() << std::endl; //
+  // std::cout << "Maximum dynamic equation violation (positive value) = " << std::endl
+  //           << f_all_.cwiseAbs().maxCoeff() << std::endl;
+  // std::cout << "Dynamic equation violation = " << std::endl
+  //           << f_all_ << std::endl;
 
-  std::cout << "sqp_loop : " << sqp_loop << std::endl;
-  std::cout << "phi = " << std::endl
-            << phi_ << std::endl;
-  std::cout << "dphi = " << std::endl
-            << dphi_ << std::endl;
-  std::cout << "theta = " << std::endl
-            << theta_ << std::endl;
-  std::cout << "alpha = " << std::endl
-            << alpha_ << std::endl;
+  // std::cout << "sqp_loop : " << sqp_loop << std::endl;
+  // std::cout << "phi = " << std::endl
+  //           << phi_ << std::endl;
+  // std::cout << "dphi = " << std::endl
+  //           << dphi_ << std::endl;
+  // std::cout << "theta = " << std::endl
+  //           << theta_ << std::endl;
+  // std::cout << "alpha = " << std::endl
+  //           << alpha_ << std::endl;
+  std::cout << "-----------------------" << std::endl;
+  std::cout << "Testing repetitions: " << N_test_rep_ << std::endl;
+  std::cout << "NMPC horizon: " << N_ << std::endl;
+  std::cout << "NMPC dt: " << dt_MPC_ << std::endl;
 }
 
 bool NMPCSolver::checkConvergence()
 {
-  // 检查算法是否收敛
-  // 实现收敛性检查逻辑，返回true或false
   return linearSearch();
 }
 
 // reference: Perceptive Locomotion through Nonlinear Model Predictive Control
 bool NMPCSolver::linearSearch()
 {
-  // 线性搜索以提高收敛速度
-  theta_ = 0.0; // 等式约束
+
+  theta_ = 0.0; // equality constraints
   phi_ = 0.0;   // cost
 
   auto x_alpha = x_nmpc_;
   auto u_alpha = u_nmpc_;
 
-  dphi_ = 0.0; // 计算d_{cost}/d_{alpha_}
+  dphi_ = 0.0; // cal d_{cost}/d_{alpha_}
 
   for (int k_l = 0; k_l < N_ + 1; ++k_l)
   {
@@ -171,18 +169,19 @@ bool NMPCSolver::linearSearch()
     else
     {
       x_search_next_ = x_nmpc_.block<12, 1>(0, k_l + 1);
-      // 计算等式约束
+      // cal equality constraints
       flow_dynamic_.GetShootingDynamic(x_search_, x_search_next_, u_search_, nullptr, nullptr, nullptr, &f_search_);
       f_search_v_ = f_search_;
       theta_ += 0.5 * (f_search_v_.transpose()) * f_search_v_;
-      // 计算x cost
+      // cal x cost
       phi_ += 0.5 * (x_search_ - x_ref_.block<12, 1>(0, k_l)).transpose() * Q_ * (x_search_ - x_ref_.block<12, 1>(0, k_l));
       Jphi_x_.block<12, 1>(0, k_l) = Q_ * (x_search_ - x_ref_.block<12, 1>(0, k_l));
-      // 计算 u cost
-      flow_dynamic_.GetConstrain(u_search_, A_constrain_, f_constrain_); // 获取约束方程
+      // cal u cost
+      flow_dynamic_.GetConstrain(u_search_, A_constrain_, f_constrain_); // get constraint equations
       for (int k_b = 0; k_b < 24; ++k_b)
       {
-        flow_dynamic_.Barrier(f_constrain_(k_b), mu_barrier_, theta_barrier_, &b_constrain_(k_b), &db_constrain_(k_b), &ddb_constrain_(k_b)); // 将约束方程转化为障碍方程
+        // Convert constraint equations into barrier equations
+        flow_dynamic_.Barrier(f_constrain_(k_b), mu_barrier_, theta_barrier_, &b_constrain_(k_b), &db_constrain_(k_b), &ddb_constrain_(k_b));
       }
       phi_ += b_constrain_.sum() + 0.5 * u_search_.transpose() * R_ * u_search_;
       Jphi_u_.block<12, 1>(0, k_l) = A_constrain_.transpose() * db_constrain_ + R_ * u_search_;
@@ -216,17 +215,18 @@ bool NMPCSolver::linearSearch()
       else
       {
         x_search_next_ = x_alpha.block<12, 1>(0, k_l + 1);
-        // 计算等式约束
+        // cal equality constraints
         flow_dynamic_.GetShootingDynamic(x_search_, x_search_next_, u_search_, nullptr, nullptr, nullptr, &f_search_);
         f_search_v_ = f_search_;
         theta_alpha += 0.5 * (f_search_v_.transpose()) * f_search_v_;
-        // 计算x cost
+        // cal x cost
         phi_alpha += 0.5 * (x_search_ - x_ref_.block<12, 1>(0, k_l)).transpose() * Q_ * (x_search_ - x_ref_.block<12, 1>(0, k_l));
-        // 计算 u cost
-        flow_dynamic_.GetConstrain(u_search_, A_constrain_, f_constrain_); // 获取约束方程
+        // cal u cost
+        flow_dynamic_.GetConstrain(u_search_, A_constrain_, f_constrain_); // get constraint equations
         for (int k_b = 0; k_b < 24; ++k_b)
         {
-          flow_dynamic_.Barrier(f_constrain_(k_b), mu_barrier_, theta_barrier_, &b_constrain_(k_b), &db_constrain_(k_b), &ddb_constrain_(k_b)); // 将约束方程转化为障碍方程
+          // Convert constraint equations into barrier equations
+          flow_dynamic_.Barrier(f_constrain_(k_b), mu_barrier_, theta_barrier_, &b_constrain_(k_b), &db_constrain_(k_b), &ddb_constrain_(k_b));
         }
         phi_alpha += b_constrain_.sum() + 0.5 * u_search_.transpose() * R_ * u_search_;
       }
@@ -271,14 +271,10 @@ bool NMPCSolver::linearSearch()
     return true;
   }
   return false;
-  // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
-  // x_nmpc_ += 0.001*x_solved_;
-  // u_nmpc_ += 0.001*u_solved_;
 }
 
 void NMPCSolver::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
 {
-
   for (int i = 0; i < N_; ++i)
   {
     Eigen::MatrixXd A_dynamic, B_dynamic, b_dynamic;
@@ -286,19 +282,23 @@ void NMPCSolver::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
     x_mpc_ = x_nmpc_.block<12, 1>(0, i);
     x_mpc_next_ = x_nmpc_.block<12, 1>(0, i + 1);
     u_mpc_ = u_nmpc_.block<12, 1>(0, i);
-    flow_dynamic_.GetShootingDynamic(x_mpc_, x_mpc_next_, u_mpc_, &A_dynamic, &B_dynamic, &b_dynamic, nullptr); // 获取离散动力学矩阵
+    // Obtain discrete dynamic matrices for shooting method
+    flow_dynamic_.GetShootingDynamic(x_mpc_, x_mpc_next_, u_mpc_, &A_dynamic, &B_dynamic, &b_dynamic, nullptr);
     f_all_.block<12, 1>(0, i) = -b_dynamic;
-    flow_dynamic_.GetConstrain(u_mpc_, A_constrain_, f_constrain_); // 获取约束方程
+    flow_dynamic_.GetConstrain(u_mpc_, A_constrain_, f_constrain_);
     f_constrain_all_.block<24, 1>(0, i) = f_constrain_;
     for (int k = 0; k < 24; ++k)
     {
-      flow_dynamic_.Barrier(f_constrain_(k), mu_barrier_, theta_barrier_, &b_constrain_(k), &db_constrain_(k), &ddb_constrain_(k)); // 将约束方程转化为障碍方程
+      // Convert constraint equations into barrier equations
+      flow_dynamic_.Barrier(f_constrain_(k), mu_barrier_, theta_barrier_, &b_constrain_(k), &db_constrain_(k), &ddb_constrain_(k));
     }
 
+    // Set QP structures for the current state
     qp[i].A = A_dynamic;
     qp[i].B = B_dynamic;
     qp[i].b = b_dynamic;
-    // qp[i].C = Eigen::Matrix<double, 20, 12>::Zero(); // 只有必须严格满足的不等式约束会启用此硬约束，开启后求解速度会大幅下降
+    // Hard constraints are only enabled for strict inequality constraints
+    // qp[i].C = Eigen::Matrix<double, 20, 12>::Zero();
     // qp[i].D = f_all_;
     // qp[i].ug = ub;
     // qp[i].lg = lb;
@@ -308,52 +308,54 @@ void NMPCSolver::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
     qp[i].R = R_ + A_constrain_.transpose() * ddb_constrain_.asDiagonal() * A_constrain_;
     qp[i].r = R_ * u_mpc_ + A_constrain_.transpose() * db_constrain_; // eb = diag(db)*Ja
   }
+  // Set terminal cost for QP
   qp[N_].Q = Qf_;
   qp[N_].q = Qf_ * (x_mpc_next_ - x_ref_.block<12, 1>(0, N_));
 }
 
 void NMPCSolver::solveQpProblems(std::vector<hpipm::OcpQp> &qp, std::vector<hpipm::OcpQpSolution> &solution)
 {
-  // 使用HPIPM求解器解决QP问题
+  // Solve QP problems using the HPIPM solver
   hpipm::OcpQpIpmSolver solver(qp, solver_settings_);
-  const auto res = solver.solve(x0_ - x_nmpc_.block<12, 1>(0, 0), qp, solution); // 求解 qp问题
+  const auto res = solver.solve(x0_ - x_nmpc_.block<12, 1>(0, 0), qp, solution);
 
   for (int i = 0; i < N_; ++i)
   {
+    // Extract the solved state and control from the solution
     x_solved_.block<12, 1>(0, i) = solution[i].x;
     u_solved_.block<12, 1>(0, i) = solution[i].u;
   }
+  // Extract the solved terminal state
   x_solved_.block<12, 1>(0, N_) = solution[N_].x;
 }
 
 void NMPCSolver::setupDynamics()
 {
-  // 初始化动态参数和参考轨迹
-  flow_dynamic_.SetMass(15.0);               // 设置质量
-  flow_dynamic_.SetMPCdt(dt_MPC_);           // 设置时间步长
-  flow_dynamic_.SetInertia(L_.asDiagonal()); // 设置惯量矩阵
-  // 设置足端位置
+  flow_dynamic_.SetMass(15.0);               // Set mass
+  flow_dynamic_.SetMPCdt(dt_MPC_);           // Set MPC time step
+  flow_dynamic_.SetInertia(L_.asDiagonal()); // Set inertia matrix
   flow_dynamic_.SetFoot(Eigen::Vector3d(0.0, -0.1, 0.0), Eigen::Vector3d(0.0, 0.1, 0.0),
                         Eigen::Vector3d(1, 1, 1).asDiagonal(), Eigen::Vector3d(1, 1, 1).asDiagonal());
 }
 
 void NMPCSolver::setupReference()
 {
-  x0_ << 0, 0, 0 /*初始轴角*/, 0.0, 0, 0.0 /*初始角速度*/, 0, 0, 1.0 /*初始位置*/, 0, 0, 0 /*初始速度*/;
-  x_ref_k_ << 0.0, 0.0, 0.0 /*目标轴角*/, 0, 0, 0.0 /*目标角速度*/, 0.0, 0, 1.0 /*目标位置*/, 0, 0, 0 /*目标速度*/;
+  // [axis angle, angular velocity, CoM position, CoM velocity]
+  x0_ << 0, 0, 0, 0, 0, 0, 0, 0, 1.0, 0, 0, 0;
+  x_ref_k_ << 0, 0, 0, 0, 0, 0, 0, 0, 1.0, 0, 0, 0;
   for (int k_ref = 0; k_ref < N_ + 1; ++k_ref)
   {
+    // Propagate the reference state across the horizon
     x_ref_.block<12, 1>(0, k_ref) = x_ref_k_;
   }
 }
 // Main control loop
 void NMPCSolver::controlLoop()
 {
-
   timer timer_test;
   timer_test.start();
 
-  // 单纯测平均速
+  // Testing average speed
   for (int nrep = 0; nrep < N_test_rep_; ++nrep)
   {
     setupDynamics();
@@ -361,23 +363,21 @@ void NMPCSolver::controlLoop()
 
     std::vector<hpipm::OcpQp> qp(N_ + 1);
     std::vector<hpipm::OcpQpSolution> solution(N_ + 1);
-    // sqp为了收敛循环
+    // SQP loop for convergence
     for (int i = 0; i < sqp_max_loop_; ++i)
     {
       prepareQpStructures(qp);
-      solveQpProblems(qp, solution); // 解决QP问题
+      solveQpProblems(qp, solution); // Solve QP problems
       if (checkConvergence())
       {
-
         break;
       }
-      // printOptimizationInfo(i);
     }
   }
-  std::cout << "nmpc平均求解时间 = " << timer_test.get() / double(N_test_rep_) << std::endl;
+  printOptimizationInfo();
+  std::cout << "Average NMPC solution time = " << timer_test.get() / double(N_test_rep_) << "ms" << std::endl;
   // return ;
 }
-
 int main()
 {
   try
