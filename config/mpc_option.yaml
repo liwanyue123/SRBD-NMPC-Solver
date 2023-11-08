@@ -4,9 +4,11 @@ MPC:
   R: 0.0001
   dt_MPC: 0.015
   horizon_MPC: 20
+  sqp_max_loop: 15
 
 Physical:
   Lbody: [0.541667, 0.516667, 1.0416667]
+
 
 
 N_rep: 100
@@ -15,6 +17,6 @@ N_rep: 100
 mu_b: 0.1
 theta_b: 5.0
 
-sqp_loop_time: 15
+ 
 
  

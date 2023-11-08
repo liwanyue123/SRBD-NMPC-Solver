@@ -15,7 +15,7 @@ set(CMAKE_BUILD_TYPE Release)
 
 
 add_subdirectory(hpipm-cpp)
-add_subdirectory(dynamic)
+add_subdirectory(dynamics)
 include_directories(
   include
 )
