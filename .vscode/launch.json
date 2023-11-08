@@ -5,8 +5,7 @@
             "name": "(gdb) Launch_nmpc",
             "type": "cppdbg",
             "request": "launch",
-            //改成自己的要编译的文件
-            "program": "${workspaceFolder}/build/stance_nmpc_test",
+            "program": "${workspaceFolder}/build/SRBD_NMPC",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
