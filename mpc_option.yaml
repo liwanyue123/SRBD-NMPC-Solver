@@ -1,25 +1,20 @@
 MPC:
   Q: [0,0,0,0,0,0,0,0,0,0,0,10]
   Qf: [0.5,0.5,0.5,0.01,0.01,0.01,100,100,100,0.0,0.0,100.0]
+  R: 0.0001
+  dt_MPC: 0.015
+  horizon_MPC: 20
 
-PhysicalParameters:
+Physical:
   Lbody: [0.541667, 0.516667, 1.0416667]
 
-K_u: 0.0001
 
-N_rep: 10
-N_step: 20
-T_step: 0.015
-
-
+N_rep: 100
+ 
+ 
 mu_b: 0.1
 theta_b: 5.0
-
-
-alpha_ocp: 1.0
 
 sqp_loop_time: 15
 
  
-
-show_flag: true

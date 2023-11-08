@@ -26,25 +26,24 @@ bool StanceNMPC::readYaml(const std::string &config_file)
     config = YAML::LoadFile("../mpc_option.yaml");
 
     std::vector<double> Q_values = config["MPC"]["Q"].as<std::vector<double>>();
-    Q_read = Eigen::Map<Vec12<double>>(Q_values.data());
+    Q_read_ = Eigen::Map<Vec12<double>>(Q_values.data());
 
     std::vector<double> Qf_values = config["MPC"]["Qf"].as<std::vector<double>>();
-    QN_read = Eigen::Map<Vec12<double>>(Qf_values.data());
+    Qf_read_ = Eigen::Map<Vec12<double>>(Qf_values.data());
 
-    std::vector<double> L_values = config["PhysicalParameters"]["Lbody"].as<std::vector<double>>();
+    R_read_ = config["MPC"]["R"].as<double>();
+    N_ = config["MPC"]["horizon_MPC"].as<int>();
+    dt_MPC_ = config["MPC"]["dt_MPC"].as<double>();
+
+    std::vector<double> L_values = config["Physical"]["Lbody"].as<std::vector<double>>();
     L_read = Eigen::Map<Vec3<double>>(L_values.data());
 
-    Qu_read = config["K_u"].as<double>();
     mu_barrier = config["mu_b"].as<double>();
     theta_barrier = config["theta_b"].as<double>();
-    alpha_ocp_read = config["alpha_ocp"].as<double>();
-    loop_read = config["sqp_loop_time"].as<int>();
 
-    Nrep = config["N_rep"].as<int>();
-    N = config["N_step"].as<int>();
-    T_step_read = config["T_step"].as<double>();
+    N_sqp_loop_ = config["sqp_loop_time"].as<int>();
 
-    show_flag_read = config["show_flag"].as<bool>();
+    N_rep_ = config["N_rep"].as<int>();
   }
   catch (YAML::BadFile &e)
   {
@@ -58,21 +57,21 @@ bool StanceNMPC::readYaml(const std::string &config_file)
 void StanceNMPC::initialize()
 {
   // 初始化参数
-  Q.setZero();
-  S.setZero();
-  QN.setZero();
-  Q = Q_read.asDiagonal();
-  R = Qu_read * Eigen::Matrix<double, 12, 12>::Identity();
-  QN = static_cast<double>(N) * QN_read.asDiagonal();
 
-  x_nmpc.resize(12, N + 1);
-  x_nmpc.setZero();
-  u_nmpc.resize(12, N);
-  u_nmpc.setOnes();
-  u_nmpc *= 100.0;
+  S.setZero();
+
+  Q = Q_read_.asDiagonal();
+  R = R_read_ * Eigen::Matrix<double, 12, 12>::Identity();
+  Qf_ = static_cast<double>(N_) * Qf_read_.asDiagonal();
+
+  x_nmpc_.resize(12, N_ + 1);
+  x_nmpc_.setZero();
+  u_nmpc_.resize(12, N_);
+  u_nmpc_.setOnes();
+  u_nmpc_ *= 100.0;
 
   x0.resize(12, 1);
-  x_ref.resize(12, N + 1);
+  x_ref.resize(12, N_ + 1);
 
   // hpipm求解参数
   solver_settings.mode = hpipm::HpipmMode::Speed;
@@ -89,27 +88,27 @@ void StanceNMPC::initialize()
   solver_settings.ric_alg = 0;
   solver_settings.split_step = 1;
 
-  get_solveX.resize(12, N + 1);
+  get_solveX.resize(12, N_ + 1);
   get_solveX.setZero();
-  get_solveU.resize(12, N);
+  get_solveU.resize(12, N_);
   get_solveU.setZero();
 
   x_mpc.resize(12);
   x_mpc_next.resize(12);
   u_mpc.resize(12);
-  f_constrain_all.resize(24, N);
-  f_all.resize(12, N);
+  f_constrain_all.resize(24, N_);
+  f_all.resize(12, N_);
   b_constrain.resize(24);
   db_constrain.resize(24);
   ddb_constrain.resize(24);
 
-  get_solveX.resize(12, N + 1);
+  get_solveX.resize(12, N_ + 1);
   get_solveX.setZero();
-  get_solveU.resize(12, N);
+  get_solveU.resize(12, N_);
   get_solveU.setZero();
 
-  Jphi_x = Eigen::MatrixXd::Zero(12, N + 1);
-  Jphi_u = Eigen::MatrixXd::Zero(12, N);
+  Jphi_x = Eigen::MatrixXd::Zero(12, N_ + 1);
+  Jphi_u = Eigen::MatrixXd::Zero(12, N_);
 
   x_search = Eigen::VectorXd::Zero(12);
   x_search_next = Eigen::VectorXd::Zero(12);
@@ -118,16 +117,16 @@ void StanceNMPC::initialize()
   f_search_v = Eigen::VectorXd::Zero(12);
 }
 
-void StanceNMPC::printOptimizationInfo(int sqp_loop, bool is_finish)
+void StanceNMPC::printOptimizationInfo(int N_sqp_loop_, bool is_finish)
 {
 
   if (is_finish)
   {
-    std::cout << "迭代次数 : " << Nrep << std::endl;
+    std::cout << "迭代次数 : " << N_rep_ << std::endl;
     std::cout << "求解状态 = " << std::endl
-              << x_nmpc << std::endl; // 求解状态量
+              << x_nmpc_ << std::endl; // 求解状态量
     std::cout << "求解力矩 = " << std::endl
-              << u_nmpc << std::endl; // 求解力
+              << u_nmpc_ << std::endl; // 求解力
     std::cout << "最大摩擦锥约束违反量（负数） = " << std::endl
               << f_constrain_all.minCoeff() << std::endl; //
     std::cout << "最大动力学方程违反量（正数） = " << std::endl
@@ -137,7 +136,7 @@ void StanceNMPC::printOptimizationInfo(int sqp_loop, bool is_finish)
   }
   else
   {
-    std::cout << "sqp_loop : " << sqp_loop << std::endl;
+    std::cout << "N_sqp_loop_ : " << N_sqp_loop_ << std::endl;
     std::cout << "phi = " << std::endl
               << phi << std::endl;
     std::cout << "dphi = " << std::endl
@@ -162,23 +161,23 @@ bool StanceNMPC::linearSearch()
   theta = 0.0; // 等式约束
   phi = 0.0;   // cost
 
-  auto x_alpha = x_nmpc;
-  auto u_alpha = u_nmpc;
+  auto x_alpha = x_nmpc_;
+  auto u_alpha = u_nmpc_;
 
   dphi = 0.0; // 计算d_{cost}/d_{alpha}
 
-  for (int k_l = 0; k_l < N + 1; ++k_l)
+  for (int k_l = 0; k_l < N_ + 1; ++k_l)
   {
-    x_search = x_nmpc.block<12, 1>(0, k_l);
-    u_search = u_nmpc.block<12, 1>(0, k_l);
-    if (k_l == N)
+    x_search = x_nmpc_.block<12, 1>(0, k_l);
+    u_search = u_nmpc_.block<12, 1>(0, k_l);
+    if (k_l == N_)
     {
-      phi += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * QN * (x_search - x_ref.block<12, 1>(0, k_l));
-      Jphi_x.block<12, 1>(0, k_l) = QN * (x_search - x_ref.block<12, 1>(0, k_l));
+      phi += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * Qf_ * (x_search - x_ref.block<12, 1>(0, k_l));
+      Jphi_x.block<12, 1>(0, k_l) = Qf_ * (x_search - x_ref.block<12, 1>(0, k_l));
     }
     else
     {
-      x_search_next = x_nmpc.block<12, 1>(0, k_l + 1);
+      x_search_next = x_nmpc_.block<12, 1>(0, k_l + 1);
       // 计算等式约束
       flow_dynamic_.GetShootingDynamic(x_search, x_search_next, u_search, nullptr, nullptr, nullptr, &f_search);
       f_search_v = f_search;
@@ -197,10 +196,10 @@ bool StanceNMPC::linearSearch()
     }
   }
 
-  for (int k_l = 0; k_l < N + 1; ++k_l)
+  for (int k_l = 0; k_l < N_ + 1; ++k_l)
   {
     dphi += get_solveX.block<12, 1>(0, k_l).transpose() * Jphi_x.block<12, 1>(0, k_l);
-    if (k_l < N)
+    if (k_l < N_)
     {
       dphi += get_solveU.block<12, 1>(0, k_l).transpose() * Jphi_u.block<12, 1>(0, k_l);
     }
@@ -210,16 +209,16 @@ bool StanceNMPC::linearSearch()
   {
     double theta_alpha = 0.0;
     double phi_alpha = 0.0;
-    x_alpha = x_nmpc + alpha * get_solveX;
-    u_alpha = u_nmpc + alpha * get_solveU;
+    x_alpha = x_nmpc_ + alpha * get_solveX;
+    u_alpha = u_nmpc_ + alpha * get_solveU;
     //
-    for (int k_l = 0; k_l < N + 1; ++k_l)
+    for (int k_l = 0; k_l < N_ + 1; ++k_l)
     {
       x_search = x_alpha.block<12, 1>(0, k_l);
       u_search = u_alpha.block<12, 1>(0, k_l);
-      if (k_l == N)
+      if (k_l == N_)
       {
-        phi_alpha += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * QN * (x_search - x_ref.block<12, 1>(0, k_l));
+        phi_alpha += 0.5 * (x_search - x_ref.block<12, 1>(0, k_l)).transpose() * Qf_ * (x_search - x_ref.block<12, 1>(0, k_l));
       }
       else
       {
@@ -244,8 +243,8 @@ bool StanceNMPC::linearSearch()
     {
       if (theta_alpha < (1.0 - byta_theta) * theta)
       {
-        x_nmpc = x_alpha;
-        u_nmpc = u_alpha;
+        x_nmpc_ = x_alpha;
+        u_nmpc_ = u_alpha;
         break;
       }
     }
@@ -253,8 +252,8 @@ bool StanceNMPC::linearSearch()
     {
       if (phi_alpha < phi + eta * alpha * dphi)
       {
-        x_nmpc = x_alpha;
-        u_nmpc = u_alpha;
+        x_nmpc_ = x_alpha;
+        u_nmpc_ = u_alpha;
         break;
       }
     }
@@ -262,8 +261,8 @@ bool StanceNMPC::linearSearch()
     {
       if ((phi_alpha < phi - byta_phi * theta) or (theta_alpha < (1.0 - byta_theta) * theta))
       {
-        x_nmpc = x_alpha;
-        u_nmpc = u_alpha;
+        x_nmpc_ = x_alpha;
+        u_nmpc_ = u_alpha;
         break;
       }
     }
@@ -280,20 +279,20 @@ bool StanceNMPC::linearSearch()
   }
   return false;
   // TODO(2) : 轴角应使用SO3加法进行迭代，目前直接相加，有可能导致轴角圈数超过1
-  // x_nmpc += 0.001*get_solveX;
-  // u_nmpc += 0.001*get_solveU;
+  // x_nmpc_ += 0.001*get_solveX;
+  // u_nmpc_ += 0.001*get_solveU;
 }
 
 void StanceNMPC::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
 {
 
-  for (int i = 0; i < N; ++i)
+  for (int i = 0; i < N_; ++i)
   {
     Eigen::MatrixXd A_dynamic, B_dynamic, b_dynamic;
 
-    x_mpc = x_nmpc.block<12, 1>(0, i);
-    x_mpc_next = x_nmpc.block<12, 1>(0, i + 1);
-    u_mpc = u_nmpc.block<12, 1>(0, i);
+    x_mpc = x_nmpc_.block<12, 1>(0, i);
+    x_mpc_next = x_nmpc_.block<12, 1>(0, i + 1);
+    u_mpc = u_nmpc_.block<12, 1>(0, i);
     flow_dynamic_.GetShootingDynamic(x_mpc, x_mpc_next, u_mpc, &A_dynamic, &B_dynamic, &b_dynamic, nullptr); // 获取离散动力学矩阵
     f_all.block<12, 1>(0, i) = -b_dynamic;
     flow_dynamic_.GetConstrain(u_mpc, A_constrain, f_constrain); // 获取约束方程
@@ -316,30 +315,30 @@ void StanceNMPC::prepareQpStructures(std::vector<hpipm::OcpQp> &qp)
     qp[i].R = R + A_constrain.transpose() * ddb_constrain.asDiagonal() * A_constrain;
     qp[i].r = R * u_mpc + A_constrain.transpose() * db_constrain; // eb = diag(db)*Ja
   }
-  qp[N].Q = QN;
-  qp[N].q = QN * (x_mpc_next - x_ref.block<12, 1>(0, N));
+  qp[N_].Q = Qf_;
+  qp[N_].q = Qf_ * (x_mpc_next - x_ref.block<12, 1>(0, N_));
 }
 
 void StanceNMPC::solveQpProblems(std::vector<hpipm::OcpQp> &qp, std::vector<hpipm::OcpQpSolution> &solution)
 {
   // 使用HPIPM求解器解决QP问题
   hpipm::OcpQpIpmSolver solver(qp, solver_settings);
-  const auto res = solver.solve(x0 - x_nmpc.block<12, 1>(0, 0), qp, solution); // 求解 qp问题
+  const auto res = solver.solve(x0 - x_nmpc_.block<12, 1>(0, 0), qp, solution); // 求解 qp问题
 
-  for (int i = 0; i < N; ++i)
+  for (int i = 0; i < N_; ++i)
   {
     get_solveX.block<12, 1>(0, i) = solution[i].x;
     get_solveU.block<12, 1>(0, i) = solution[i].u;
   }
-  get_solveX.block<12, 1>(0, N) = solution[N].x;
+  get_solveX.block<12, 1>(0, N_) = solution[N_].x;
 }
 
 void StanceNMPC::setupDynamics()
 {
   // 初始化动态参数和参考轨迹
-  flow_dynamic_.SetM(15.0);                // 设置质量
-  flow_dynamic_.SetT(T_step_read);         // 设置时间步长
-  flow_dynamic_.SetL(L_read.asDiagonal()); // 设置惯量矩阵
+  flow_dynamic_.SetMass(15.0);                   // 设置质量
+  flow_dynamic_.SetMPCdt(dt_MPC_);               // 设置时间步长
+  flow_dynamic_.SetInertia(L_read.asDiagonal()); // 设置惯量矩阵
   // 设置足端位置
   flow_dynamic_.SetFoot(Eigen::Vector3d(0.0, -0.1, 0.0), Eigen::Vector3d(0.0, 0.1, 0.0),
                         Eigen::Vector3d(1, 1, 1).asDiagonal(), Eigen::Vector3d(1, 1, 1).asDiagonal());
@@ -349,7 +348,7 @@ void StanceNMPC::setupReference()
 {
   x0 << 0, 0, 0 /*初始轴角*/, 0.0, 0, 0.0 /*初始角速度*/, 0, 0, 1.0 /*初始位置*/, 0, 0, 0 /*初始速度*/;
   x_ref_k << 0.0, 0.0, 0.0 /*目标轴角*/, 0, 0, 0.0 /*目标角速度*/, 0.0, 0, 1.0 /*目标位置*/, 0, 0, 0 /*目标速度*/;
-  for (int k_ref = 0; k_ref < N + 1; ++k_ref)
+  for (int k_ref = 0; k_ref < N_ + 1; ++k_ref)
   {
     x_ref.block<12, 1>(0, k_ref) = x_ref_k;
   }
@@ -362,27 +361,27 @@ void StanceNMPC::controlLoop()
   timer_test.start();
 
   // 单纯测平均速
-  for (int nrep = 0; nrep < Nrep; ++nrep)
+  for (int nrep = 0; nrep < N_rep_; ++nrep)
   {
     setupDynamics();
     setupReference();
 
-    std::vector<hpipm::OcpQp> qp(N + 1);
-    std::vector<hpipm::OcpQpSolution> solution(N + 1);
+    std::vector<hpipm::OcpQp> qp(N_ + 1);
+    std::vector<hpipm::OcpQpSolution> solution(N_ + 1);
     // sqp为了收敛循环
-    for (int sqp_loop = 0; sqp_loop < loop_read; ++sqp_loop)
+    for (int i = 0; i < N_sqp_loop_; ++i)
     {
       prepareQpStructures(qp);
       solveQpProblems(qp, solution); // 解决QP问题
       if (checkConvergence())
       {
-        // printOptimizationInfo(sqp_loop, true);
+        // printOptimizationInfo(i, true);
         break;
       }
-      // printOptimizationInfo(sqp_loop, false);
+      // printOptimizationInfo(i, false);
     }
   }
-  std::cout << "nmpc平均求解时间 = " << timer_test.get() / double(Nrep) << std::endl;
+  std::cout << "nmpc平均求解时间 = " << timer_test.get() / double(N_rep_) << std::endl;
   // return ;
 }
 

@@ -15,49 +15,38 @@
 #include <yaml-cpp/yaml.h>
 #include <thread>
 #include <mutex>
-template <typename T>
-using Vec3 = Eigen::Matrix<T, 3, 1>;
-template <typename T>
-using Vec9 = Eigen::Matrix<T, 9, 1>;
-template <typename T>
-using Vec12 = Eigen::Matrix<T, 12, 1>;
-template <typename T>
-using Vec24 = Eigen::Matrix<T, 24, 1>;
+#include "cppTypes.h"
 class StanceNMPC
 {
 public:
     explicit StanceNMPC(const std::string &config_file);
     ~StanceNMPC();
 
-    bool readYaml(const std::string &config_file);
     void initialize();
     void controlLoop();
-    void drawPlot();
 
 private:
-    Eigen::Matrix<double, 12, 1> Q_read;
-    Eigen::Matrix<double, 12, 1> QN_read;
-    Eigen::Matrix<double, 3, 1> L_read;
-
-    double Qu_read;
+    Eigen::Matrix<double, 12, 1> Q_read_;
+    Eigen::Matrix<double, 12, 1> Qf_read_;
+    double R_read_;
     double mu_barrier;
     double theta_barrier;
-    double alpha_ocp_read;
-    int loop_read;
+    int N_sqp_loop_;
 
-    int Nrep; // 测试次数
-    int N;    // 预测步长
-    double T_step_read;
-    bool show_flag_read;
+    int N_rep_; // 测试次数
+    int N_;     // 预测步长
+    double dt_MPC_;
+
+    Eigen::Matrix<double, 3, 1> L_read;
 
     Eigen::Matrix<double, 12, 12> Q; // state
     Eigen::Matrix<double, 12, 12> S;
     Eigen::Matrix<double, 12, 12> R; // force
-    Eigen::Matrix<double, 12, 12> QN;
+    Eigen::Matrix<double, 12, 12> Qf_;
 
     FlowDynamic flow_dynamic_;
-    Eigen::MatrixXd x_nmpc;
-    Eigen::MatrixXd u_nmpc;
+    Eigen::MatrixXd x_nmpc_;
+    Eigen::MatrixXd u_nmpc_;
 
     Eigen::VectorXd x0;
     Eigen::Matrix<double, 12, 1> x_ref_k;
@@ -76,20 +65,13 @@ private:
 
     void solveQpProblems(std::vector<hpipm::OcpQp> &qp, std::vector<hpipm::OcpQpSolution> &solution);
 
-    void updateStateAndControl(std::vector<hpipm::OcpQpSolution> &solution);
-
-    void printOptimizationInfo(int sqp_loop, bool is_finish);
     bool checkConvergence();
+
     bool linearSearch();
-    void prepareQpStep(int begin, int end);
 
-    void initThread();
-    void atomicPrint();
-    // Helper methods for control calculations
-    void solveNMPC();
-    void applyControl(const Eigen::VectorXd &control);
-    void updateState();
+    void printOptimizationInfo(int N_sqp_loop_, bool is_finish);
 
+    bool readYaml(const std::string &config_file);
     Eigen::VectorXd x_mpc;
     Eigen::VectorXd x_mpc_next;
     Eigen::VectorXd u_mpc;
