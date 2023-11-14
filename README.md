@@ -40,6 +40,9 @@ make -j8
 ```
 ### VScode
 ```bash
+create a build file 
 Compile: Ctrl+shift+B
 Run: F5
 ```
+
+I use a C++ wrapper for hpipm: [hpipm-cpp](https://github.com/mayataka/hpipm-cpp).
